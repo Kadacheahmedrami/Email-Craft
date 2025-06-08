@@ -1,0 +1,288 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.75rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    /* GitHub Dark Theme Colors */
+    --background: 220 13% 9%; /* #0d1117 - GitHub's main dark background */
+    --foreground: 213 31% 91%; /* #e6edf3 - GitHub's main text color */
+    --card: 215 28% 11%; /* #161b22 - GitHub's card/panel background */
+    --card-foreground: 213 31% 91%; /* #e6edf3 */
+    --popover: 215 28% 11%; /* #161b22 */
+    --popover-foreground: 213 31% 91%; /* #e6edf3 */
+    --primary: 212 92% 45%; /* #1f6feb - GitHub's blue */
+    --primary-foreground: 210 40% 98%; /* #f0f6ff */
+    --secondary: 217 19% 15%; /* #21262d - GitHub's secondary background */
+    --secondary-foreground: 213 31% 91%; /* #e6edf3 */
+    --muted: 217 19% 15%; /* #21262d */
+    --muted-foreground: 215 14% 61%; /* #8b949e - GitHub's muted text */
+    --accent: 217 19% 15%; /* #21262d */
+    --accent-foreground: 213 31% 91%; /* #e6edf3 */
+    --destructive: 0 81% 60%; /* #f85149 - GitHub's red */
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 19% 15%; /* #21262d - GitHub's border color */
+    --input: 217 19% 15%; /* #21262d */
+    --ring: 212 92% 45%; /* #1f6feb */
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .writing-mode-vertical {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Claude-style textarea with custom scrollbar */
+  .claude-textarea {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+
+  .claude-textarea::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .claude-textarea::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+  }
+
+  .claude-textarea::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .claude-textarea::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+
+  /* Dark mode scrollbar */
+  .dark .claude-textarea::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  .dark .claude-textarea::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.6);
+  }
+
+  /* Hide scrollbar but maintain functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
+}
+
+/* Custom scrollbar styles - GitHub inspired */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground)) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.5);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.4);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.6);
+}
+
+/* Smooth transitions for resizing */
+.resize-transition {
+  transition: width 0.2s ease-out;
+}
+
+/* Prevent text selection during resize */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* GitHub-style code blocks */
+.dark pre {
+  background-color: hsl(217 19% 15%);
+  border: 1px solid hsl(217 19% 15%);
+}
+
+.dark code {
+  background-color: hsl(217 19% 15%);
+  color: hsl(213 31% 91%);
+}
+
+/* GitHub-style focus rings */
+.dark *:focus-visible {
+  outline: 2px solid hsl(212 92% 45%);
+  outline-offset: 2px;
+}
+
+/* Enhanced dark mode for specific components */
+.dark .bg-muted\/20 {
+  background-color: hsl(217 19% 15% / 0.5);
+}
+
+.dark .bg-muted\/30 {
+  background-color: hsl(217 19% 15% / 0.7);
+}
+
+.dark .bg-muted\/50 {
+  background-color: hsl(217 19% 15%);
+}
+
+/* GitHub-style hover effects */
+.dark .hover\:bg-muted:hover {
+  background-color: hsl(217 19% 15%);
+}
+
+.dark .hover\:bg-muted\/50:hover {
+  background-color: hsl(217 19% 15% / 0.8);
+}
+
+/* Theme transition */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* GitHub-style syntax highlighting for code blocks */
+.dark .hljs {
+  background: hsl(217 19% 15%);
+  color: hsl(213 31% 91%);
+}
+
+.dark .hljs-keyword {
+  color: hsl(317 54% 65%); /* #ff7b72 */
+}
+
+.dark .hljs-string {
+  color: hsl(137 55% 71%); /* #a5d6ff */
+}
+
+.dark .hljs-comment {
+  color: hsl(215 14% 61%); /* #8b949e */
+}
+
+.dark .hljs-number {
+  color: hsl(29 54% 61%); /* #79c0ff */
+}
+
+/* Enhanced button styles for dark theme */
+.dark .btn-primary {
+  background-color: hsl(212 92% 45%);
+  border-color: hsl(212 92% 45%);
+}
+
+.dark .btn-primary:hover {
+  background-color: hsl(212 92% 40%);
+  border-color: hsl(212 92% 40%);
+}
+
+/* GitHub-style borders */
+.dark .border {
+  border-color: hsl(217 19% 15%);
+}
+
+.dark .border-border\/40 {
+  border-color: hsl(217 19% 15% / 0.4);
+}
+
+.dark .border-border\/50 {
+  border-color: hsl(217 19% 15% / 0.5);
+}
+
+.dark .border-border\/60 {
+  border-color: hsl(217 19% 15% / 0.6);
+}
+
+/* Enhanced backdrop blur for dark theme */
+.dark .backdrop-blur {
+  backdrop-filter: blur(12px) saturate(180%);
+}
+
+/* GitHub-style shadows */
+.dark .shadow-sm {
+  box-shadow: 0 1px 2px 0 hsl(220 13% 9% / 0.3);
+}
+
+.dark .shadow-lg {
+  box-shadow: 0 10px 15px -3px hsl(220 13% 9% / 0.3), 0 4px 6px -2px hsl(220 13% 9% / 0.2);
+}
+
+.dark .shadow-xl {
+  box-shadow: 0 20px 25px -5px hsl(220 13% 9% / 0.4), 0 10px 10px -5px hsl(220 13% 9% / 0.2);
+}

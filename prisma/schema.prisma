@@ -1,0 +1,173 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime? @map("email_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  chats      Chat[]
+  images     Image[]
+  emailSends EmailSend[]
+  sessions   Session[]
+  accounts   Account[]
+
+  @@map("users")
+}
+
+model Chat {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  title           String   @default("New Chat")
+  currentTemplate String?  @map("current_template") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   Message[]
+  images     Image[]
+  emailSends EmailSend[]
+
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@map("chats")
+}
+
+model Message {
+  id                String   @id @default(uuid()) @db.Uuid
+  chatId            String   @map("chat_id") @db.Uuid
+  role              Role
+  content           String   @db.Text
+  generatedTemplate String?  @map("generated_template") @db.Text
+  metadata          Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  // Relations
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model Image {
+  id           String   @id @default(uuid()) @db.Uuid
+  chatId       String   @map("chat_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  filename     String
+  originalName String   @map("original_name")
+  url          String
+  size         Int
+  mimeType     String   @map("mime_type")
+  storagePath  String?  @map("storage_path")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@index([userId])
+  @@map("images")
+}
+
+model EmailSend {
+  id           String      @id @default(uuid()) @db.Uuid
+  chatId       String      @map("chat_id") @db.Uuid
+  userId       String      @map("user_id") @db.Uuid
+  subject      String      @db.VarChar(500)
+  senderName   String      @map("sender_name")
+  senderEmail  String      @map("sender_email")
+  recipients   Json        @default("[]")
+  templateHtml String      @map("template_html") @db.Text
+  attachments  Json        @default("[]")
+  status       EmailStatus @default(PENDING)
+  sentAt       DateTime?   @map("sent_at")
+  errorMessage String?     @map("error_message") @db.Text
+  metadata     Json        @default("{}")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([chatId])
+  @@index([createdAt(sort: Desc)])
+  @@map("email_sends")
+}
+
+// NextAuth.js required models
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime
+  sessionToken String   @unique @map("session_token") @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
+  @@map("sessions")
+}
+
+model Account {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String   @map("provider_account_id")
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model VerificationToken {
+  identifier String   @db.VarChar(255)
+  token      String   @unique @db.VarChar(500)
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Enums
+enum Role {
+  USER @map("user")
+  AI   @map("ai")
+}
+
+enum EmailStatus {
+  PENDING @map("pending")
+  SENT    @map("sent")
+  FAILED  @map("failed")
+}
