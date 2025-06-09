@@ -31,18 +31,31 @@ interface Message {
 }
 
 interface ChatInterfaceProps {
+  conversation: Message[]
+  onConversationChange: (msgs: Message[]) => void
+  currentTemplate: string
+  onTemplateChange: (template: string) => void
+  uploadedImages: any[]
+  isGenerating: boolean
+  onGeneratingChange: (generating: boolean) => void
   sidebarOpen: boolean
   onSidebarToggle: () => void
   chatId: string
 }
 
-export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInterfaceProps) {
+export function ChatInterface({
+  conversation,
+  onConversationChange,
+  currentTemplate,
+  onTemplateChange,
+  uploadedImages,
+  isGenerating,
+  onGeneratingChange,
+  sidebarOpen,
+  onSidebarToggle,
+  chatId,
+}: ChatInterfaceProps) {
   const [input, setInput] = useState("")
-  const [messages, setMessages] = useState<Message[]>([])
-  const [currentTemplate, setCurrentTemplate] = useState("")
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
@@ -54,64 +67,10 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
-  // Load chat data with better error handling
-  const loadChatData = useCallback(async () => {
-    if (!chatId) {
-      setIsLoading(false)
-      return
-    }
-
-    try {
-      setIsLoading(true)
-      setLoadError(null)
-      
-      const response = await fetch(`/api/chats/${chatId}`)
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Chat doesn't exist yet, that's fine for new chats
-          setMessages([])
-          setCurrentTemplate("")
-          setChatTitle("New Chat")
-          setImageCount(0)
-          setIsLoading(false)
-          return
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success && data.chat) {
-        const chat = data.chat
-        setMessages(chat.messages || [])
-        setCurrentTemplate(chat.currentTemplate || "")
-        setChatTitle(chat.title || "New Chat")
-        setImageCount(chat.images?.length || 0)
-      } else {
-        // If no chat data, start fresh
-        setMessages([])
-        setCurrentTemplate("")
-        setChatTitle("New Chat")
-        setImageCount(0)
-      }
-    } catch (error) {
-      console.error("Failed to load chat:", error)
-      setLoadError(error instanceof Error ? error.message : "Failed to load chat")
-      // Don't prevent the interface from showing on load error
-      setMessages([])
-      setCurrentTemplate("")
-      setChatTitle("New Chat")
-      setImageCount(0)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [chatId])
-
-  // Load chat data on mount and when chatId changes
+  // Update image count when uploadedImages changes
   useEffect(() => {
-    loadChatData()
-  }, [loadChatData])
+    setImageCount(uploadedImages?.length || 0)
+  }, [uploadedImages])
 
   // Enhanced auto-scroll functionality
   const scrollToBottom = useCallback(
@@ -136,18 +95,18 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
     const atBottom = scrollHeight - scrollTop - clientHeight < threshold
 
     setIsAtBottom(atBottom)
-    setShowScrollButton(!atBottom && messages.length > 0)
-  }, [messages.length])
+    setShowScrollButton(!atBottom && conversation.length > 0)
+  }, [conversation.length])
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
-    if (messages.length > 0 && !isLoading) {
+    if (conversation.length > 0) {
       const timer = setTimeout(() => {
         scrollToBottom(true)
       }, 100)
       return () => clearTimeout(timer)
     }
-  }, [messages.length, scrollToBottom, isLoading])
+  }, [conversation.length, scrollToBottom])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -156,7 +115,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
 
     const userMessageContent = input.trim()
     setInput("")
-    setIsGenerating(true)
+    onGeneratingChange(true)
 
     // Optimistically add user message to UI
     const tempUserMessage: Message = {
@@ -165,7 +124,9 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
       content: userMessageContent,
       createdAt: new Date().toISOString(),
     }
-    setMessages((prev) => [...prev, tempUserMessage])
+
+    const updatedConversation = [...conversation, tempUserMessage]
+    onConversationChange(updatedConversation)
 
     try {
       // Add user message to database
@@ -178,16 +139,13 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
         }),
       })
 
-      if (userMessageResponse.ok) {
-        const userMessageData = await userMessageResponse.json()
-        if (userMessageData.success && userMessageData.message) {
-          // Replace temp message with real one
-          setMessages((prev) => 
-            prev.map((msg) => 
-              msg.id === tempUserMessage.id ? userMessageData.message : msg
-            )
-          )
-        }
+      const userMessageData = await userMessageResponse.json()
+      if (userMessageResponse.ok && userMessageData.success && userMessageData.message) {
+        // Replace temp message with real one
+        const conversationWithRealUser = updatedConversation.map((msg) =>
+          msg.id === tempUserMessage.id ? userMessageData.message : msg,
+        )
+        onConversationChange(conversationWithRealUser)
       }
 
       // Generate AI response
@@ -196,7 +154,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessageContent,
-          conversation: messages,
+          conversation: conversation,
           sessionId: chatId,
           maintainMemory: true,
           latestTemplate: currentTemplate,
@@ -210,8 +168,14 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
       const aiData = await aiResponse.json()
 
       if (aiData.success) {
-        const aiMessageContent = aiData.aiResponse || 
+        const aiMessageContent =
+          aiData.aiResponse ||
           "I've generated a professional email template based on your requirements. You can see the preview on the right panel."
+
+        // CRITICAL FIX: Update template immediately when AI responds
+        if (aiData.template) {
+          onTemplateChange(aiData.template)
+        }
 
         // Add AI message to database
         const aiMessageResponse = await fetch(`/api/chats/${chatId}/messages`, {
@@ -225,24 +189,26 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
           }),
         })
 
-        if (aiMessageResponse.ok) {
-          const aiMessageData = await aiMessageResponse.json()
-          if (aiMessageData.success && aiMessageData.message) {
-            setMessages((prev) => [...prev, aiMessageData.message])
-            setCurrentTemplate(aiData.template || "")
+        const aiMessageData = await aiMessageResponse.json()
+        if (aiMessageResponse.ok && aiMessageData.success && aiMessageData.message) {
+          const finalConversation = [
+            ...updatedConversation.filter((msg) => msg.id !== tempUserMessage.id),
+            userMessageData?.message || tempUserMessage,
+            aiMessageData.message,
+          ]
+          onConversationChange(finalConversation)
 
-            // Update chat's current template
-            try {
-              await fetch(`/api/chats/${chatId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  currentTemplate: aiData.template,
-                }),
-              })
-            } catch (updateError) {
-              console.warn("Failed to update chat template:", updateError)
-            }
+          // Update chat's current template
+          try {
+            await fetch(`/api/chats/${chatId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                currentTemplate: aiData.template,
+              }),
+            })
+          } catch (updateError) {
+            console.warn("Failed to update chat template:", updateError)
           }
         } else {
           // Fallback: add message to UI even if DB save failed
@@ -254,8 +220,8 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
             createdAt: new Date().toISOString(),
             metadata: aiData.metadata || {},
           }
-          setMessages((prev) => [...prev, fallbackMessage])
-          setCurrentTemplate(aiData.template || "")
+          const finalConversation = [...updatedConversation, fallbackMessage]
+          onConversationChange(finalConversation)
         }
       } else {
         throw new Error(aiData.error || "Failed to generate template")
@@ -281,40 +247,39 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
           }),
         })
 
-        if (errorMessageResponse.ok) {
-          const errorMessageData = await errorMessageResponse.json()
-          if (errorMessageData.success && errorMessageData.message) {
-            setMessages((prev) => [...prev, errorMessageData.message])
-          } else {
-            setMessages((prev) => [...prev, errorMessage])
-          }
+        const errorMessageData = await errorMessageResponse.json()
+        if (errorMessageResponse.ok && errorMessageData.success && errorMessageData.message) {
+          const finalConversation = [...updatedConversation, errorMessageData.message]
+          onConversationChange(finalConversation)
         } else {
-          setMessages((prev) => [...prev, errorMessage])
+          const finalConversation = [...updatedConversation, errorMessage]
+          onConversationChange(finalConversation)
         }
       } catch (saveError) {
         console.warn("Failed to save error message:", saveError)
-        setMessages((prev) => [...prev, errorMessage])
+        const finalConversation = [...updatedConversation, errorMessage]
+        onConversationChange(finalConversation)
       }
     } finally {
-      setIsGenerating(false)
+      onGeneratingChange(false)
     }
   }
 
   const clearConversation = async () => {
     try {
       // Clear UI immediately for better UX
-      setMessages([])
-      setCurrentTemplate("")
+      onConversationChange([])
+      onTemplateChange("")
 
       // Delete all messages for this chat
-      const messageIds = messages.map((m) => m.id).filter(id => !id.startsWith('temp-'))
+      const messageIds = conversation.map((m) => m.id).filter((id) => !id.startsWith("temp-"))
       if (messageIds.length > 0) {
         await Promise.allSettled(
           messageIds.map((id) =>
             fetch(`/api/messages/${id}`, {
               method: "DELETE",
-            })
-          )
+            }),
+          ),
         )
       }
 
@@ -381,23 +346,6 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
     }
   }
 
-  // Show loading state only briefly
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground">Loading chat...</p>
-          {loadError && (
-            <p className="text-sm text-destructive">
-              Error: {loadError}
-            </p>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   // Render centered welcome screen with input
   const renderWelcomeScreen = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-4xl mx-auto">
@@ -410,13 +358,6 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
           Describe the email template you need, and I'll generate professional, responsive HTML for you. I'll remember
           our conversation and can iterate on previous designs.
         </p>
-        {loadError && (
-          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-            <p className="text-sm text-destructive">
-              Note: There was an issue loading chat history, but you can still create new templates.
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Centered Input Area */}
@@ -503,7 +444,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
           <Menu className="h-5 w-5" />
         </Button>
         <h1 className="font-semibold text-lg">{chatTitle}</h1>
-        {messages.length > 0 && (
+        {conversation.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
             <Badge variant="default" className="text-xs">
               Memory: ON
@@ -523,7 +464,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
             Chat: {chatId.substring(0, 8)}...
           </Badge>
         </div>
-        {messages.length > 0 && (
+        {conversation.length > 0 && (
           <div className="flex items-center gap-2">
             <Badge variant="default" className="text-xs">
               Memory: ON
@@ -537,7 +478,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
       </div>
 
       {/* Content Area */}
-      {messages.length === 0 ? (
+      {conversation.length === 0 ? (
         renderWelcomeScreen()
       ) : (
         <>
@@ -545,7 +486,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
           <div className="flex-1 relative overflow-hidden">
             <ScrollArea className="h-full p-3 sm:p-4 lg:p-6" ref={scrollAreaRef} onScrollCapture={handleScroll}>
               <div className="space-y-6 max-w-4xl mx-auto pb-4">
-                {messages.map((message) => (
+                {conversation.map((message) => (
                   <div
                     key={message.id}
                     className={`flex gap-3 lg:gap-4 ${message.role === "USER" ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
@@ -710,7 +651,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
                   <div className="flex items-center gap-2">
                     {imageCount > 0 && (
                       <Badge variant="secondary" className="gap-1 text-xs">
-                        <ImageIcon className="h-3 w-3" />
+                        <ImageIcon className="h-3 w-3 mr-1" />
                         {imageCount}
                       </Badge>
                     )}

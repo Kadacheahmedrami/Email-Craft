@@ -42,9 +42,8 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
     return () => window.removeEventListener("mousemove", handleMouseMove)
   }, [])
 
-  const createNewChat = () => {
-    const chatId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    router.push(`/chat/${chatId}`)
+  const Start = () => {
+    router.push(`/chat`)
   }
 
   // Animation variants
@@ -197,7 +196,7 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
               </Link>
             </Button>
             <ThemeToggle />
-            <Button variant="outline" size="sm" onClick={createNewChat}>
+            <Button variant="outline" size="sm" onClick={Start}>
               Get Started
             </Button>
           </div>
@@ -238,7 +237,7 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   size="lg"
-                  onClick={createNewChat}
+                  onClick={Start}
                   className="h-14 px-10 text-lg font-medium shadow-xl bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90"
                 >
                   Start Creating

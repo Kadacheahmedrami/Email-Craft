@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import { NewChatClient } from "./NewChatClient"
+import { NewChatClient } from "@/components/NewChatClient"
 
 export default async function NewChatPage() {
   // Server-side authentication check

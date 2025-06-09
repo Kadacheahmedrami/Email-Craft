@@ -401,7 +401,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                       </div>
                     ) : filteredConversations.length === 0 ? (
-                      <div className="text-center py-8">
+                      <div className="text-center  py-8">
                         <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-4">
                           <History className="h-8 w-8 text-muted-foreground/50" />
                         </div>
@@ -418,7 +418,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                           <Link key={conv.id} href={`/chat/${conv.id}`}>
                             <div
                               className={cn(
-                                "group p-3 rounded-lg border w-[93%] border-border/40 bg-card/50 hover:bg-card hover:border-border/60 cursor-pointer transition-all duration-200",
+                                "group p-3 rounded-lg border w-[80%] border-border/40 bg-card/50 hover:bg-card hover:border-border/60 cursor-pointer transition-all duration-200",
                                 currentChatId === conv.id && "bg-primary/10 border-primary/30",
                               )}
                             >
