@@ -20,7 +20,6 @@ import {
   ArrowDown,
   CheckCircle2,
 } from "lucide-react"
-import { useSession } from "next-auth/react"
 
 interface Message {
   id: string
@@ -38,12 +37,12 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInterfaceProps) {
-  const { data: session } = useSession()
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
   const [currentTemplate, setCurrentTemplate] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
@@ -55,32 +54,64 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
-  // Load chat data
-  useEffect(() => {
-    if (chatId && session) {
-      loadChatData()
+  // Load chat data with better error handling
+  const loadChatData = useCallback(async () => {
+    if (!chatId) {
+      setIsLoading(false)
+      return
     }
-  }, [chatId, session])
 
-  const loadChatData = async () => {
     try {
       setIsLoading(true)
+      setLoadError(null)
+      
       const response = await fetch(`/api/chats/${chatId}`)
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          // Chat doesn't exist yet, that's fine for new chats
+          setMessages([])
+          setCurrentTemplate("")
+          setChatTitle("New Chat")
+          setImageCount(0)
+          setIsLoading(false)
+          return
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
       const data = await response.json()
 
-      if (data.success) {
+      if (data.success && data.chat) {
         const chat = data.chat
         setMessages(chat.messages || [])
         setCurrentTemplate(chat.currentTemplate || "")
-        setChatTitle(chat.title)
+        setChatTitle(chat.title || "New Chat")
         setImageCount(chat.images?.length || 0)
+      } else {
+        // If no chat data, start fresh
+        setMessages([])
+        setCurrentTemplate("")
+        setChatTitle("New Chat")
+        setImageCount(0)
       }
     } catch (error) {
       console.error("Failed to load chat:", error)
+      setLoadError(error instanceof Error ? error.message : "Failed to load chat")
+      // Don't prevent the interface from showing on load error
+      setMessages([])
+      setCurrentTemplate("")
+      setChatTitle("New Chat")
+      setImageCount(0)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [chatId])
+
+  // Load chat data on mount and when chatId changes
+  useEffect(() => {
+    loadChatData()
+  }, [loadChatData])
 
   // Enhanced auto-scroll functionality
   const scrollToBottom = useCallback(
@@ -110,21 +141,31 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && !isLoading) {
       const timer = setTimeout(() => {
         scrollToBottom(true)
       }, 100)
       return () => clearTimeout(timer)
     }
-  }, [messages.length, scrollToBottom])
+  }, [messages.length, scrollToBottom, isLoading])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isGenerating || !session) return
 
-    const userMessageContent = input
+    if (!input.trim() || isGenerating) return
+
+    const userMessageContent = input.trim()
     setInput("")
     setIsGenerating(true)
+
+    // Optimistically add user message to UI
+    const tempUserMessage: Message = {
+      id: `temp-user-${Date.now()}`,
+      role: "USER",
+      content: userMessageContent,
+      createdAt: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, tempUserMessage])
 
     try {
       // Add user message to database
@@ -137,9 +178,16 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
         }),
       })
 
-      const userMessageData = await userMessageResponse.json()
-      if (userMessageData.success) {
-        setMessages((prev) => [...prev, userMessageData.message])
+      if (userMessageResponse.ok) {
+        const userMessageData = await userMessageResponse.json()
+        if (userMessageData.success && userMessageData.message) {
+          // Replace temp message with real one
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === tempUserMessage.id ? userMessageData.message : msg
+            )
+          )
+        }
       }
 
       // Generate AI response
@@ -162,33 +210,52 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
       const aiData = await aiResponse.json()
 
       if (aiData.success) {
+        const aiMessageContent = aiData.aiResponse || 
+          "I've generated a professional email template based on your requirements. You can see the preview on the right panel."
+
         // Add AI message to database
         const aiMessageResponse = await fetch(`/api/chats/${chatId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             role: "AI",
-            content:
-              aiData.aiResponse ||
-              "I've generated a professional email template based on your requirements. You can see the preview on the right panel.",
+            content: aiMessageContent,
             generatedTemplate: aiData.template,
             metadata: aiData.metadata || {},
           }),
         })
 
-        const aiMessageData = await aiMessageResponse.json()
-        if (aiMessageData.success) {
-          setMessages((prev) => [...prev, aiMessageData.message])
-          setCurrentTemplate(aiData.template)
+        if (aiMessageResponse.ok) {
+          const aiMessageData = await aiMessageResponse.json()
+          if (aiMessageData.success && aiMessageData.message) {
+            setMessages((prev) => [...prev, aiMessageData.message])
+            setCurrentTemplate(aiData.template || "")
 
-          // Update chat's current template
-          await fetch(`/api/chats/${chatId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              currentTemplate: aiData.template,
-            }),
-          })
+            // Update chat's current template
+            try {
+              await fetch(`/api/chats/${chatId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  currentTemplate: aiData.template,
+                }),
+              })
+            } catch (updateError) {
+              console.warn("Failed to update chat template:", updateError)
+            }
+          }
+        } else {
+          // Fallback: add message to UI even if DB save failed
+          const fallbackMessage: Message = {
+            id: `ai-${Date.now()}`,
+            role: "AI",
+            content: aiMessageContent,
+            generatedTemplate: aiData.template,
+            createdAt: new Date().toISOString(),
+            metadata: aiData.metadata || {},
+          }
+          setMessages((prev) => [...prev, fallbackMessage])
+          setCurrentTemplate(aiData.template || "")
         }
       } else {
         throw new Error(aiData.error || "Failed to generate template")
@@ -196,19 +263,37 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
     } catch (error) {
       console.error("Error generating template:", error)
 
-      // Add error message to database
-      const errorMessageResponse = await fetch(`/api/chats/${chatId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: "AI",
-          content: "Sorry, I encountered an error while generating your template. Please try again.",
-        }),
-      })
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        role: "AI",
+        content: "Sorry, I encountered an error while generating your template. Please try again.",
+        createdAt: new Date().toISOString(),
+      }
 
-      const errorMessageData = await errorMessageResponse.json()
-      if (errorMessageData.success) {
-        setMessages((prev) => [...prev, errorMessageData.message])
+      // Try to save error message to database
+      try {
+        const errorMessageResponse = await fetch(`/api/chats/${chatId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: "AI",
+            content: errorMessage.content,
+          }),
+        })
+
+        if (errorMessageResponse.ok) {
+          const errorMessageData = await errorMessageResponse.json()
+          if (errorMessageData.success && errorMessageData.message) {
+            setMessages((prev) => [...prev, errorMessageData.message])
+          } else {
+            setMessages((prev) => [...prev, errorMessage])
+          }
+        } else {
+          setMessages((prev) => [...prev, errorMessage])
+        }
+      } catch (saveError) {
+        console.warn("Failed to save error message:", saveError)
+        setMessages((prev) => [...prev, errorMessage])
       }
     } finally {
       setIsGenerating(false)
@@ -217,27 +302,34 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
 
   const clearConversation = async () => {
     try {
-      // Delete all messages for this chat
-      const messageIds = messages.map((m) => m.id)
-      await Promise.all(
-        messageIds.map((id) =>
-          fetch(`/api/messages/${id}`, {
-            method: "DELETE",
-          }),
-        ),
-      )
-
-      // Update chat to clear current template
-      await fetch(`/api/chats/${chatId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentTemplate: null,
-        }),
-      })
-
+      // Clear UI immediately for better UX
       setMessages([])
       setCurrentTemplate("")
+
+      // Delete all messages for this chat
+      const messageIds = messages.map((m) => m.id).filter(id => !id.startsWith('temp-'))
+      if (messageIds.length > 0) {
+        await Promise.allSettled(
+          messageIds.map((id) =>
+            fetch(`/api/messages/${id}`, {
+              method: "DELETE",
+            })
+          )
+        )
+      }
+
+      // Update chat to clear current template
+      try {
+        await fetch(`/api/chats/${chatId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            currentTemplate: null,
+          }),
+        })
+      } catch (updateError) {
+        console.warn("Failed to update chat:", updateError)
+      }
     } catch (error) {
       console.error("Error clearing conversation:", error)
     }
@@ -254,13 +346,17 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
   }
 
   const downloadTemplate = (template: string, filename = "email-template.html") => {
-    const blob = new Blob([template], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const blob = new Blob([template], { type: "text/html" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Failed to download template:", error)
+    }
   }
 
   const handleQuickStart = (promptText: string) => {
@@ -278,15 +374,25 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
   }
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString()
+    try {
+      return new Date(dateString).toLocaleTimeString()
+    } catch {
+      return "now"
+    }
   }
 
+  // Show loading state only briefly
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
           <p className="text-muted-foreground">Loading chat...</p>
+          {loadError && (
+            <p className="text-sm text-destructive">
+              Error: {loadError}
+            </p>
+          )}
         </div>
       </div>
     )
@@ -304,6 +410,13 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
           Describe the email template you need, and I'll generate professional, responsive HTML for you. I'll remember
           our conversation and can iterate on previous designs.
         </p>
+        {loadError && (
+          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <p className="text-sm text-destructive">
+              Note: There was an issue loading chat history, but you can still create new templates.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Centered Input Area */}
@@ -316,7 +429,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Describe the email template you want to create..."
-              className="min-h-[100px] max-h-[300px] resize-none border-0 bg-transparent text-lg p-4 pr-16 focus-visible:ring-0 focus-visible:ring-offset-0 claude-textarea"
+              className="min-h-[100px] max-h-[300px] resize-none border-0 bg-transparent text-lg p-4 pr-16 focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <div className="absolute right-3 bottom-3">
               <Button
@@ -577,7 +690,7 @@ export function ChatInterface({ sidebarOpen, onSidebarToggle, chatId }: ChatInte
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Continue the conversation or ask me to modify the template..."
-                    className="min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent text-lg p-4 pr-16 focus-visible:ring-0 focus-visible:ring-offset-0 claude-textarea"
+                    className="min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent text-lg p-4 pr-16 focus-visible:ring-0 focus-visible:ring-offset-0"
                     disabled={isGenerating}
                   />
 

@@ -1,7 +1,8 @@
+// File: page.tsx (Server Component)
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import NewChatClient from "./NewChatClient"
+import { NewChatClient } from "./NewChatClient"
 
 export default async function NewChatPage() {
   // Server-side authentication check

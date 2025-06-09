@@ -31,7 +31,6 @@ import { useDropzone } from "react-dropzone"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useSession } from "next-auth/react"
 
 interface Chat {
   id: string
@@ -66,7 +65,6 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
   const { theme, setTheme } = useTheme()
   const router = useRouter()
-  const { data: session } = useSession()
   const [activeView, setActiveView] = useState<"conversations" | "images">("conversations")
   const [searchQuery, setSearchQuery] = useState("")
   const [isUploading, setIsUploading] = useState(false)
@@ -77,10 +75,8 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
 
   // Load user's chats
   useEffect(() => {
-    if (session?.user) {
-      loadChats()
-    }
-  }, [session])
+    loadChats()
+  }, [])
 
   // Load images when switching to images view or when currentChatId changes
   useEffect(() => {
@@ -151,7 +147,8 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
     formData.append("file", file)
     formData.append("chatId", currentChatId)
 
-    const response = await fetch("/api/images/upload", {
+    // Updated to use consistent API pattern
+    const response = await fetch(`/api/chats/${currentChatId}/images`, {
       method: "POST",
       body: formData,
     })
@@ -197,11 +194,28 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
   })
 
   const removeImage = async (id: string) => {
+    if (!currentChatId) return
+    
     try {
-      await fetch(`/api/images/${id}`, { method: "DELETE" })
+      // Updated to use consistent API pattern
+      await fetch(`/api/chats/${currentChatId}/images/${id}`, { method: "DELETE" })
       setImages((prev) => prev.filter((img) => img.id !== id))
     } catch (error) {
       console.error("Failed to delete image:", error)
+    }
+  }
+
+  const clearAllImages = async () => {
+    if (!currentChatId || images.length === 0) return
+
+    try {
+      // Updated to use consistent API pattern - delete all images for this chat
+      await fetch(`/api/chats/${currentChatId}/images`, { method: "DELETE" })
+      setImages([])
+    } catch (error) {
+      console.error("Failed to clear all images:", error)
+      // Fallback: delete individually
+      Promise.all(images.map((img) => removeImage(img.id)))
     }
   }
 
@@ -246,10 +260,6 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
   )
 
   const filteredImages = images.filter((img) => img.originalName.toLowerCase().includes(searchQuery.toLowerCase()))
-
-  if (!session) {
-    return null
-  }
 
   return (
     <>
@@ -564,10 +574,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          // Clear all images for this chat
-                          Promise.all(images.map((img) => removeImage(img.id)))
-                        }}
+                        onClick={clearAllImages}
                         className="w-full h-8 text-xs"
                       >
                         Clear All Images

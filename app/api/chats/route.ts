@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-
+    console.log(session.user.id, "User ID from session")
 
     const chats = await prisma.chat.findMany({
       where: {
