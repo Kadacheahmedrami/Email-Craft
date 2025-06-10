@@ -14,5 +14,5 @@ export default async function NewChatPage() {
   }
 
   // If authenticated, render the client-side chat component
-  return <NewChatClient />
+  return <NewChatClient session={session} />
 }

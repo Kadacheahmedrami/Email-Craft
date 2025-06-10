@@ -264,13 +264,17 @@ export default function ChatPage() {
           onNewChat={() => {
             setConversation([])
             setCurrentTemplate("")
-          }}
+          } }
           images={uploadedImages}
           onImagesChange={setUploadedImages}
           isOpen={sidebarOpen}
           onToggle={() => setSidebarOpen(!sidebarOpen)}
-          currentChatId={chatId}
-        />
+          currentChatId={chatId} session={{
+            user: {
+              name: undefined,
+              email: undefined
+            }
+          }}        />
 
         {/* Chat Interface */}
         <div className="flex-1 flex min-w-0 overflow-hidden">

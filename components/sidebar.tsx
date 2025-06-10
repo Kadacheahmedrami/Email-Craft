@@ -23,14 +23,16 @@ import {
   PanelLeftOpen,
   Clock,
   MoreHorizontal,
-  Home,
   Loader2,
+  LogOut,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useDropzone } from "react-dropzone"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Session } from "next-auth"
+import { signOut } from "next-auth/react"
 
 interface Chat {
   id: string
@@ -57,19 +59,34 @@ interface ImageFile {
 }
 
 interface SidebarProps {
+  session: { user: { name?: string; email?: string } }
+  conversation: any[]
+  onNewChat: () => void
+  images: any[]
+  onImagesChange: (images: any[]) => void
   isOpen: boolean
   onToggle: () => void
-  currentChatId?: string
+  currentChatId: string
 }
 
-export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
+export function Sidebar({ 
+  session,
+  conversation,
+  onNewChat,
+  images: propsImages,
+  onImagesChange,
+  isOpen, 
+  onToggle, 
+  currentChatId 
+}: SidebarProps) {
+
   const { theme, setTheme } = useTheme()
   const router = useRouter()
   const [activeView, setActiveView] = useState<"conversations" | "images">("conversations")
   const [searchQuery, setSearchQuery] = useState("")
   const [isUploading, setIsUploading] = useState(false)
   const [conversations, setConversations] = useState<Chat[]>([])
-  const [images, setImages] = useState<ImageFile[]>([])
+  const [uploadedImages, setUploadedImages] = useState<ImageFile[]>([])
   const [isLoadingChats, setIsLoadingChats] = useState(true)
   const [isLoadingImages, setIsLoadingImages] = useState(false)
 
@@ -110,7 +127,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
       const data = await response.json()
 
       if (data.success) {
-        setImages(data.images)
+        setUploadedImages(data.images)
       }
     } catch (error) {
       console.error("Failed to load images:", error)
@@ -172,7 +189,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
         const uploadPromises = acceptedFiles.map(uploadToServer)
         const newImages = await Promise.all(uploadPromises)
 
-        setImages((prev) => [...newImages, ...prev])
+        setUploadedImages((prev) => [...newImages, ...prev])
         setActiveView("images")
       } catch (error) {
         console.error("Failed to upload images:", error)
@@ -199,23 +216,31 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
     try {
       // Updated to use consistent API pattern
       await fetch(`/api/chats/${currentChatId}/images/${id}`, { method: "DELETE" })
-      setImages((prev) => prev.filter((img) => img.id !== id))
+      setUploadedImages((prev) => prev.filter((img) => img.id !== id))
     } catch (error) {
       console.error("Failed to delete image:", error)
     }
   }
 
   const clearAllImages = async () => {
-    if (!currentChatId || images.length === 0) return
+    if (!currentChatId || uploadedImages.length === 0) return
 
     try {
       // Updated to use consistent API pattern - delete all images for this chat
       await fetch(`/api/chats/${currentChatId}/images`, { method: "DELETE" })
-      setImages([])
+      setUploadedImages([])
     } catch (error) {
       console.error("Failed to clear all images:", error)
       // Fallback: delete individually
-      Promise.all(images.map((img) => removeImage(img.id)))
+      Promise.all(uploadedImages.map((img) => removeImage(img.id)))
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await signOut({ callbackUrl: "/" })
+    } catch (error) {
+      console.error("Failed to logout:", error)
     }
   }
 
@@ -259,7 +284,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
       getConversationType(conv).toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
-  const filteredImages = images.filter((img) => img.originalName.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredImages = uploadedImages.filter((img) => img.originalName.toLowerCase().includes(searchQuery.toLowerCase()))
 
   return (
     <>
@@ -310,25 +335,21 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                 </Link>
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 hover:bg-muted/50">
-                  <Link href="/" title="Home">
-                    <Home className="h-4 w-4" />
-                  </Link>
-                </Button>
+              
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={onToggle}
                   className="h-8 w-8 p-0 hover:bg-muted/50 flex-shrink-0"
                 >
-                  <PanelLeftClose className="h-4 w-4" />
+                  <PanelLeftClose className="h-8 w-8" />
                 </Button>
               </div>
             </>
           ) : (
             <div className="flex flex-col items-center gap-2 w-full">
               <Button variant="ghost" size="sm" onClick={onToggle} className="h-8 w-8 p-0 hover:bg-muted/50">
-                <PanelLeftOpen className="h-4 w-4" />
+                <PanelLeftOpen className="h-8 w-8" />
               </Button>
             </div>
           )}
@@ -368,9 +389,9 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                 >
                   <ImageIcon className="h-3 w-3 mr-2" />
                   Images
-                  {images.length > 0 && (
+                  {uploadedImages.length > 0 && (
                     <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
-                      {images.length}
+                      {uploadedImages.length}
                     </Badge>
                   )}
                 </Button>
@@ -418,7 +439,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                           <Link key={conv.id} href={`/chat/${conv.id}`}>
                             <div
                               className={cn(
-                                "group p-3 rounded-lg border w-[80%] border-border/40 bg-card/50 hover:bg-card hover:border-border/60 cursor-pointer transition-all duration-200",
+                                "group p-3 rounded-lg border w-full border-border/40 bg-card/50 hover:bg-card hover:border-border/60 cursor-pointer transition-all duration-200",
                                 currentChatId === conv.id && "bg-primary/10 border-primary/30",
                               )}
                             >
@@ -472,7 +493,10 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                       )}
                       onClick={() => {
                         if (currentChatId) {
-                          document.querySelector('input[type="file"]')?.click()
+                          const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+                          if (fileInput) {
+                            fileInput.click()
+                          }
                         }
                       }}
                     >
@@ -569,7 +593,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                   </ScrollArea>
 
                   {/* Clear All Button */}
-                  {images.length > 0 && (
+                  {uploadedImages.length > 0 && (
                     <div className="p-4 border-t border-border/40">
                       <Button
                         variant="outline"
@@ -587,7 +611,7 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
 
             {/* Footer */}
             <div className="p-4 border-t border-border/40">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-3">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -600,6 +624,24 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
                 <Button variant="ghost" size="sm" className="h-8 px-2 text-xs">
                   <Settings className="h-4 w-4 mr-2" />
                   Settings
+                </Button>
+              </div>
+              
+              {/* User Info and Logout */}
+              <div className="space-y-2">
+                {session?.user && (
+                  <div className="text-xs text-muted-foreground text-center truncate px-2">
+                    {session.user.email || session.user.name}
+                  </div>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="w-full h-8 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                >
+                  <LogOut className="h-3 w-3 mr-2" />
+                  Logout
                 </Button>
               </div>
             </div>
@@ -631,9 +673,9 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
               onClick={() => setActiveView("images")}
             >
               <ImageIcon className="h-5 w-5" />
-              {images.length > 0 && (
+              {uploadedImages.length > 0 && (
                 <Badge variant="secondary" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
-                  {images.length}
+                  {uploadedImages.length}
                 </Badge>
               )}
             </Button>
@@ -647,6 +689,15 @@ export function Sidebar({ isOpen, onToggle, currentChatId }: SidebarProps) {
               className="w-10 h-10 p-0 rounded-lg"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="w-10 h-10 p-0 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4" />
             </Button>
           </div>
         )}

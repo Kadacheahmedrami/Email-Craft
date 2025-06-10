@@ -11,7 +11,14 @@ import { Sparkles, Send, Loader2, ImageIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Sidebar } from "@/components/sidebar"
 
-export function NewChatClient() {
+// File: components/NewChatClient.tsx (Client Component)
+
+
+export function NewChatClient({ 
+  session 
+}: { 
+  session: { user: { name?: string; email?: string } } 
+}) {
   const router = useRouter()
   const [input, setInput] = useState("")
   const [isCreating, setIsCreating] = useState(false)
@@ -71,6 +78,7 @@ export function NewChatClient() {
       <div className="flex h-screen bg-background text-foreground overflow-hidden">
         {/* Sidebar */}
         <Sidebar
+          session={session}
           conversation={[]}
           onNewChat={() => {
             setInput("")
