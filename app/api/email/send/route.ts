@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/lib/auth"
+import { authOptions, getUserTokens, debugUserTokens } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import nodemailer from "nodemailer"
 import { google } from "googleapis"
 import juice from "juice"
 import type { Prisma } from "@prisma/client"
@@ -23,53 +22,71 @@ interface EmailAttachment {
 interface SendEmailRequest {
   chatId: string
   subject: string
-  senderName: string
-  senderEmail: string
+  senderName?: string // Optional - will default to user's name
   recipients: EmailRecipient[]
   replyTo?: string
   template: string
   attachments?: EmailAttachment[]
 }
 
-// OAuth2 configuration
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI,
-)
+// Create Gmail API client
+function createGmailClient(accessToken: string) {
+  const oauth2Client = new google.auth.OAuth2()
+  oauth2Client.setCredentials({ access_token: accessToken })
 
-async function createTransporter(accessToken: string) {
+  return google.gmail({ version: "v1", auth: oauth2Client })
+}
+
+// Test Gmail API access
+async function testGmailAccess(accessToken: string) {
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        type: "OAuth2",
-        user: undefined,
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        accessToken: accessToken,
-      },
-    } as any)
-
-    return transporter
-  } catch (error) {
-    console.error("Error creating transporter:", error)
-    throw new Error("Failed to create email transporter")
+    const gmail = createGmailClient(accessToken)
+    const profile = await gmail.users.getProfile({ userId: 'me' })
+    console.log("✅ Gmail API access successful:", profile.data.emailAddress)
+    return { success: true, email: profile.data.emailAddress }
+  } catch (error: any) {
+    console.error("❌ Gmail API access failed:", {
+      code: error.code,
+      message: error.message,
+      status: error.status,
+      details: error.details
+    })
+    return { success: false, error }
   }
 }
 
-async function downloadAttachment(url: string): Promise<Buffer> {
-  try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Failed to download attachment: ${response.statusText}`)
-    }
-    const arrayBuffer = await response.arrayBuffer()
-    return Buffer.from(arrayBuffer)
-  } catch (error) {
-    console.error("Error downloading attachment:", error)
-    throw error
-  }
+// Convert HTML to base64 encoded email
+function createEmailMessage(
+  to: string[],
+  subject: string,
+  htmlBody: string,
+  fromName: string,
+  fromEmail: string,
+  replyTo?: string,
+): string {
+  const boundary = "boundary_" + Math.random().toString(36).substr(2, 9)
+
+  const email = [
+    `To: ${to.join(", ")}`,
+    `From: ${fromName} <${fromEmail}>`,
+    `Subject: ${subject}`,
+    replyTo ? `Reply-To: ${replyTo}` : "",
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: quoted-printable",
+    "",
+    htmlBody,
+    "",
+    `--${boundary}--`,
+  ]
+    .filter((line) => line !== "")
+    .join("\r\n")
+
+  // Convert to base64url
+  return Buffer.from(email).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
 
 export async function POST(req: NextRequest) {
@@ -83,12 +100,12 @@ export async function POST(req: NextRequest) {
     const data: SendEmailRequest = await req.json()
 
     // Validate required fields
-    if (!data.subject || !data.senderEmail || !data.template || !data.chatId) {
+    if (!data.subject || !data.template || !data.chatId) {
       return NextResponse.json(
         {
           success: false,
           error: "Missing required fields",
-          details: "Subject, sender email, template, and chat ID are required",
+          details: "Subject, template, and chat ID are required",
         },
         { status: 400 },
       )
@@ -116,6 +133,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Get the authenticated user's email - this will be the sender
+    const senderEmail = session.user.email
+    const senderName = data.senderName || session.user.name || "User"
+
+    if (!senderEmail) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "User email not found",
+          details: "Cannot send email without authenticated user email",
+        },
+        { status: 400 },
+      )
+    }
+
     // Validate recipients
     const validRecipients = data.recipients.filter((r) => r.email && r.email.includes("@") && r.email.includes("."))
 
@@ -129,155 +161,47 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Get user's Google account for sending
-    const account = await prisma.account.findFirst({
-      where: {
-        userId: session.user.id,
-        provider: "google",
-      },
-    })
-
-    if (!account?.access_token) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Google account not connected",
-          details: "Please sign in with Google to send emails",
-        },
-        { status: 401 },
-      )
-    }
-
+    console.log("🔍 Starting email send process...")
     console.log("Processing email send request:", {
       subject: data.subject,
       recipients: validRecipients.length,
       attachments: data.attachments?.length || 0,
       chatId: data.chatId,
+      senderEmail: senderEmail,
     })
 
-    // Create email send record
-    const emailSend = await prisma.emailSend.create({
-      data: {
-        chatId: data.chatId,
-        userId: session.user.id,
-        subject: data.subject,
-        senderName: data.senderName,
-        senderEmail: data.senderEmail,
-        recipients: validRecipients as unknown as Prisma.InputJsonValue,
-        templateHtml: data.template,
-        attachments: (data.attachments || []) as unknown as Prisma.InputJsonValue,
-        status: "PENDING",
-      },
-    })
+    // Debug user tokens and scopes
+    console.log("🔍 Debugging user tokens...")
+    await debugUserTokens(session.user.id)
 
-    try {
-      // Inline CSS styles using Juice
-      let inlinedHtml: string
-      try {
-        inlinedHtml = juice(data.template, {
-          removeStyleTags: true,
-          preserveMediaQueries: true,
-          preserveFontFaces: true,
-          webResources: {
-            relativeTo: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-          },
-        })
-      } catch (juiceError) {
-        console.error("Error inlining CSS:", juiceError)
-        inlinedHtml = data.template
-      }
+    // Get fresh tokens using the improved token management
+    console.log("🔍 Getting fresh tokens...")
+    const tokens = await getUserTokens(session.user.id)
 
-      // Create transporter with user's access token
-      const transporter = await createTransporter(account.access_token)
-
-      // Process attachments
-      const attachments: any[] = []
-      if (data.attachments && data.attachments.length > 0) {
-        for (const attachment of data.attachments) {
-          try {
-            const buffer = await downloadAttachment(attachment.url)
-            attachments.push({
-              filename: attachment.name,
-              content: buffer,
-              contentType: attachment.type,
-              size: attachment.size,
-            })
-          } catch (attachmentError) {
-            console.error(`Failed to process attachment ${attachment.name}:`, attachmentError)
-          }
-        }
-      }
-
-      // Prepare email options
-      const mailOptions = {
-        from: `${data.senderName} <${data.senderEmail}>`,
-        to: validRecipients.map((r) => (r.name ? `${r.name} <${r.email}>` : r.email)),
-        subject: data.subject,
-        html: inlinedHtml,
-        replyTo: data.replyTo || data.senderEmail,
-        attachments: attachments.length > 0 ? attachments : undefined,
-        headers: {
-          "X-Mailer": "EmailCraft",
-          "X-Priority": "3",
-          "X-MSMail-Priority": "Normal",
+    if (!tokens) {
+      console.log("❌ No tokens available")
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Google account authentication failed",
+          details: "Please sign in with Google again to send emails",
+          code: "AUTH_REQUIRED",
         },
-      }
-
-      // Send email
-      const info = await transporter.sendMail(mailOptions)
-
-      // Update email send record as successful
-      await prisma.emailSend.update({
-        where: { id: emailSend.id },
-        data: {
-          status: "SENT",
-          sentAt: new Date(),
-          metadata: {
-            messageId: info.messageId,
-            accepted: info.accepted,
-            rejected: info.rejected,
-            response: info.response,
-          } as unknown as Prisma.InputJsonValue,
-        },
-      })
-
-      console.log("Email sent successfully:", {
-        messageId: info.messageId,
-        recipients: validRecipients.length,
-        attachments: attachments.length,
-      })
-
-      return NextResponse.json({
-        success: true,
-        emailSendId: emailSend.id,
-        messageId: info.messageId,
-        recipients: validRecipients.length,
-        attachments: attachments.length,
-        timestamp: new Date().toISOString(),
-        details: {
-          accepted: info.accepted,
-          rejected: info.rejected,
-          response: info.response,
-        },
-      })
-    } catch (sendError) {
-      // Update email send record as failed
-      await prisma.emailSend.update({
-        where: { id: emailSend.id },
-        data: {
-          status: "FAILED",
-          errorMessage: sendError instanceof Error ? sendError.message : String(sendError),
-        },
-      })
-
-      throw sendError
+        { status: 401 },
+      )
     }
-  } catch (error) {
-    console.error("Error sending email:", error)
 
-    // Handle specific OAuth2 errors
-    if (error instanceof Error) {
-      if (error.message.includes("invalid_grant") || error.message.includes("refresh_token")) {
+    console.log("✅ Tokens obtained successfully")
+
+    // Test Gmail API access before proceeding
+    console.log("🔍 Testing Gmail API access...")
+    const gmailTest = await testGmailAccess(tokens.accessToken)
+    
+    if (!gmailTest.success) {
+      console.log("❌ Gmail API test failed")
+      
+      // Handle specific error codes
+      if (gmailTest.error?.code === 401 || gmailTest.error?.message?.includes("invalid_grant")) {
         return NextResponse.json(
           {
             success: false,
@@ -289,7 +213,175 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      if (error.message.includes("quota") || error.message.includes("rate limit")) {
+      if (gmailTest.error?.code === 403) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Permission denied",
+            details: "Gmail API access denied. Please check your Google account permissions and ensure you've granted Gmail send permissions.",
+            code: "PERMISSION_DENIED",
+            debugInfo: {
+              errorCode: gmailTest.error.code,
+              errorMessage: gmailTest.error.message,
+              suggestion: "Try signing out and signing back in to grant Gmail permissions"
+            }
+          },
+          { status: 403 },
+        )
+      }
+
+      // Generic error
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Gmail API access failed",
+          details: gmailTest.error?.message || "Unknown error",
+          code: "GMAIL_API_ERROR",
+        },
+        { status: 500 },
+      )
+    }
+
+    console.log("✅ Gmail API access confirmed")
+
+    // Create email send record
+    const emailSend = await prisma.emailSend.create({
+      data: {
+        chatId: data.chatId,
+        userId: session.user.id,
+        subject: data.subject,
+        senderName: senderName,
+        senderEmail: senderEmail,
+        recipients: validRecipients as unknown as Prisma.InputJsonValue,
+        templateHtml: data.template,
+        attachments: (data.attachments || []) as unknown as Prisma.InputJsonValue,
+        status: "PENDING",
+      },
+    })
+
+    try {
+      console.log("🔍 Processing email template...")
+      // Inline CSS styles using Juice
+      let inlinedHtml: string
+      try {
+        inlinedHtml = juice(data.template, {
+          removeStyleTags: true,
+          preserveMediaQueries: true,
+          preserveFontFaces: true,
+        })
+      } catch (juiceError) {
+        console.error("Error inlining CSS:", juiceError)
+        inlinedHtml = data.template
+      }
+
+      // Create Gmail client with fresh access token
+      const gmail = createGmailClient(tokens.accessToken)
+
+      // Prepare recipient emails
+      const recipientEmails = validRecipients.map((r) => r.email)
+
+      // Create email message
+      console.log("🔍 Creating email message...")
+      const emailMessage = createEmailMessage(
+        recipientEmails,
+        data.subject,
+        inlinedHtml,
+        senderName,
+        senderEmail,
+        data.replyTo,
+      )
+
+      // Send email using Gmail API
+      console.log("🔍 Sending email via Gmail API...")
+      const response = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: {
+          raw: emailMessage,
+        },
+      })
+
+      // Update email send record as successful
+      await prisma.emailSend.update({
+        where: { id: emailSend.id },
+        data: {
+          status: "SENT",
+          sentAt: new Date(),
+          metadata: {
+            messageId: response.data.id,
+            threadId: response.data.threadId,
+            service: "Gmail API",
+          } as unknown as Prisma.InputJsonValue,
+        },
+      })
+
+      console.log("✅ Email sent successfully:", {
+        messageId: response.data.id,
+        recipients: validRecipients.length,
+        threadId: response.data.threadId,
+      })
+
+      return NextResponse.json({
+        success: true,
+        emailSendId: emailSend.id,
+        messageId: response.data.id,
+        threadId: response.data.threadId,
+        recipients: validRecipients.length,
+        timestamp: new Date().toISOString(),
+        details: {
+          service: "Gmail API",
+          sentFrom: senderEmail,
+        },
+      })
+
+    } catch (sendError: any) {
+      console.error("❌ Email send failed:", {
+        code: sendError.code,
+        message: sendError.message,
+        status: sendError.status,
+        details: sendError.details,
+        errors: sendError.errors
+      })
+
+      // Update email send record as failed
+      await prisma.emailSend.update({
+        where: { id: emailSend.id },
+        data: {
+          status: "FAILED",
+          errorMessage: sendError instanceof Error ? sendError.message : String(sendError),
+        },
+      })
+
+      // Handle specific Gmail API errors
+      if (sendError.code === 401 || sendError.message?.includes("invalid_grant")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Authentication failed",
+            details: "Please re-authenticate with Google to send emails",
+            code: "AUTH_EXPIRED",
+          },
+          { status: 401 },
+        )
+      }
+
+      if (sendError.code === 403) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Permission denied",
+            details: "Gmail API access may be restricted. Please check your Google account permissions.",
+            code: "PERMISSION_DENIED",
+            debugInfo: {
+              errorCode: sendError.code,
+              errorMessage: sendError.message,
+              suggestion: "Try signing out and signing back in to grant Gmail send permissions"
+            }
+          },
+          { status: 403 },
+        )
+      }
+
+      if (sendError.code === 429) {
         return NextResponse.json(
           {
             success: false,
@@ -300,7 +392,12 @@ export async function POST(req: NextRequest) {
           { status: 429 },
         )
       }
+
+      throw sendError
     }
+
+  } catch (error) {
+    console.error("❌ Error sending email:", error)
 
     return NextResponse.json(
       {
