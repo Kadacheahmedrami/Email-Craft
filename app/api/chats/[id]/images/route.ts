@@ -4,9 +4,10 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 // GET /api/chats/[id]/images - Get images for a specific chat
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
+    const { id } = await params
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     // Verify chat belongs to user
     const chat = await prisma.chat.findFirst({
       where: {
-        id: params.id,
+        id: id,
         userId: session.user.id,
       },
     })
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     const images = await prisma.image.findMany({
       where: {
-        chatId: params.id,
+        chatId: id,
       },
       orderBy: { createdAt: "desc" },
     })

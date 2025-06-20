@@ -12,22 +12,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log(session.user.id, "User ID from session")
-
     const chats = await prisma.chat.findMany({
       where: {
         userId: session.user.id,
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        currentTemplate: true,
+        createdAt: true,
+        updatedAt: true,
         messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-        },
-        images: {
           select: {
             id: true,
-            filename: true,
+            content: true,
+            createdAt: true,
           },
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
         _count: {
           select: {
@@ -69,12 +71,17 @@ export async function POST(req: NextRequest) {
 
     const { title } = await req.json()
 
- 
-
     const chat = await prisma.chat.create({
       data: {
         userId: session.user.id,
         title: title || "New Chat",
+      },
+      select: {
+        id: true,
+        title: true,
+        currentTemplate: true,
+        createdAt: true,
+        updatedAt: true,
       },
     })
 
