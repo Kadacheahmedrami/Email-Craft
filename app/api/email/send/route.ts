@@ -55,8 +55,64 @@ async function testGmailAccess(accessToken: string) {
   }
 }
 
-// Convert HTML to base64 encoded email
-function createEmailMessage(
+// Convert HTML to plain text for email fallback
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[^>]*>.*?<\/style>/gis, '') // Remove style tags
+    .replace(/<script[^>]*>.*?<\/script>/gis, '') // Remove script tags
+    .replace(/<br\s*\/?>/gi, '\n') // Convert <br> to newlines
+    .replace(/<\/p>/gi, '\n\n') // Convert </p> to double newlines
+    .replace(/<\/div>/gi, '\n') // Convert </div> to newlines
+    .replace(/<\/h[1-6]>/gi, '\n\n') // Convert heading closings to double newlines
+    .replace(/<li[^>]*>/gi, '• ') // Convert <li> to bullet points
+    .replace(/<\/li>/gi, '\n') // Convert </li> to newlines
+    .replace(/<[^>]*>/g, '') // Remove all remaining HTML tags
+    .replace(/&nbsp;/g, ' ') // Convert &nbsp; to spaces
+    .replace(/&amp;/g, '&') // Convert &amp; to &
+    .replace(/&lt;/g, '<') // Convert &lt; to <
+    .replace(/&gt;/g, '>') // Convert &gt; to >
+    .replace(/&quot;/g, '"') // Convert &quot; to "
+    .replace(/&#39;/g, "'") // Convert &#39; to '
+    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+    .replace(/\n\s+/g, '\n') // Remove spaces after newlines
+    .replace(/\n{3,}/g, '\n\n') // Limit consecutive newlines to 2
+    .trim()
+}
+
+// Create simple HTML email (often more reliable than multipart)
+function createSimpleHtmlEmail(
+  to: string[],
+  subject: string,
+  htmlBody: string,
+  fromName: string,
+  fromEmail: string,
+  replyTo?: string,
+): string {
+  // Build simple HTML email without multipart
+  const emailParts = [
+    `To: ${to.join(", ")}`,
+    `From: ${fromName} <${fromEmail}>`,
+    `Subject: ${subject}`,
+    replyTo ? `Reply-To: ${replyTo}` : "",
+    "MIME-Version: 1.0",
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    htmlBody
+  ].filter(line => line !== null && line !== undefined && line !== "")
+
+  const rawEmail = emailParts.join("\r\n")
+
+  // Convert to base64url for Gmail API
+  return Buffer.from(rawEmail, 'utf8')
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
+}
+
+// Create multipart email message (alternative approach)
+function createMultipartEmail(
   to: string[],
   subject: string,
   htmlBody: string,
@@ -65,8 +121,9 @@ function createEmailMessage(
   replyTo?: string,
 ): string {
   const boundary = "boundary_" + Math.random().toString(36).substr(2, 9)
+  const plainTextBody = htmlToPlainText(htmlBody)
 
-  const email = [
+  const emailParts = [
     `To: ${to.join(", ")}`,
     `From: ${fromName} <${fromEmail}>`,
     `Subject: ${subject}`,
@@ -75,18 +132,54 @@ function createEmailMessage(
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     "",
     `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    plainTextBody,
+    "",
+    `--${boundary}`,
     "Content-Type: text/html; charset=UTF-8",
-    "Content-Transfer-Encoding: quoted-printable",
+    "Content-Transfer-Encoding: 7bit",
     "",
     htmlBody,
     "",
-    `--${boundary}--`,
-  ]
-    .filter((line) => line !== "")
-    .join("\r\n")
+    `--${boundary}--`
+  ].filter(line => line !== null && line !== undefined && line !== "")
 
-  // Convert to base64url
-  return Buffer.from(email).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+  const rawEmail = emailParts.join("\r\n")
+
+  return Buffer.from(rawEmail, 'utf8')
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
+}
+
+// Process HTML template for email compatibility
+function processHtmlForEmail(html: string): string {
+  let processedHtml = html
+
+  // If it's not a complete HTML document, wrap it properly
+  if (!processedHtml.trim().toLowerCase().startsWith('<!doctype') && 
+      !processedHtml.trim().toLowerCase().startsWith('<html')) {
+    processedHtml = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <!--[if !mso]><!-->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <!--<![endif]-->
+  <title></title>
+</head>
+<body style="margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+${html}
+</body>
+</html>`
+  }
+
+  return processedHtml
 }
 
 export async function POST(req: NextRequest) {
@@ -260,19 +353,52 @@ export async function POST(req: NextRequest) {
     })
 
     try {
-      console.log("🔍 Processing email template...")
-      // Inline CSS styles using Juice
-      let inlinedHtml: string
+      console.log("🔍 Processing HTML email template like Nodemailer + Juice...")
+      
+      // Step 1: Process the HTML template for email compatibility
+      let emailReadyHtml = processHtmlForEmail(data.template)
+      
+      // Step 2: Inline CSS using Juice (exactly like Nodemailer does)
+      let finalHtml: string
       try {
-        inlinedHtml = juice(data.template, {
-          removeStyleTags: true,
-          preserveMediaQueries: true,
-          preserveFontFaces: true,
+        finalHtml = juice(emailReadyHtml, {
+          removeStyleTags: true, // Remove style tags after inlining
+          preserveMediaQueries: false, // Most email clients don't support media queries
+          preserveFontFaces: false, // Limited support in email clients
+          preserveKeyFrames: false, // Not supported in email clients
+          preserveImportant: true, // Keep !important declarations
+          preservePseudos: false, // Email clients don't support pseudo selectors
+          inlinePseudoElements: false, // Not supported in email clients
+          webResources: {
+            images: false, // Don't fetch/inline images
+            links: false,  // Don't fetch external stylesheets
+            scripts: false // Don't fetch/inline scripts
+          },
+          xmlMode: false,
+          applyAttributesTableElements: true,
+          insertPreservedExtraCss: false // Don't insert extra CSS
         })
+        
+        console.log("✅ CSS inlined successfully with Juice")
+        
       } catch (juiceError) {
-        console.error("Error inlining CSS:", juiceError)
-        inlinedHtml = data.template
+        console.error("❌ Error inlining CSS with Juice:", juiceError)
+        // Fallback to the processed HTML without CSS inlining
+        finalHtml = emailReadyHtml
       }
+
+      // Additional email client compatibility fixes
+      finalHtml = finalHtml
+        // Ensure tables have proper attributes for Outlook
+        .replace(/<table(?![^>]*cellpadding)/g, '<table cellpadding="0" cellspacing="0" border="0"')
+        // Fix images for better email client support
+        .replace(/<img([^>]*?)>/g, '<img$1 style="display:block; border:0; outline:none; text-decoration:none;">')
+        // Fix line heights for Outlook
+        .replace(/line-height:\s*(\d+(?:\.\d+)?);/g, 'line-height:$1; mso-line-height-rule:exactly;')
+        // Remove any remaining problematic CSS
+        .replace(/box-shadow:[^;]+;/g, '')
+        .replace(/text-shadow:[^;]+;/g, '')
+        .replace(/transform:[^;]+;/g, '')
 
       // Create Gmail client with fresh access token
       const gmail = createGmailClient(tokens.accessToken)
@@ -280,16 +406,22 @@ export async function POST(req: NextRequest) {
       // Prepare recipient emails
       const recipientEmails = validRecipients.map((r) => r.email)
 
-      // Create email message
       console.log("🔍 Creating email message...")
-      const emailMessage = createEmailMessage(
+      
+      // Use simple HTML email approach (more reliable)
+      const emailMessage = createSimpleHtmlEmail(
         recipientEmails,
         data.subject,
-        inlinedHtml,
+        finalHtml,
         senderName,
         senderEmail,
         data.replyTo,
       )
+
+      // Debug: Log the actual email content (first 500 chars)
+      const debugEmail = Buffer.from(emailMessage, 'base64').toString('utf8')
+      console.log("📧 Raw email preview (first 500 chars):")
+      console.log(debugEmail.substring(0, 500))
 
       // Send email using Gmail API
       console.log("🔍 Sending email via Gmail API...")
@@ -310,6 +442,8 @@ export async function POST(req: NextRequest) {
             messageId: response.data.id,
             threadId: response.data.threadId,
             service: "Gmail API",
+            htmlProcessed: true,
+            emailFormat: "simple-html"
           } as unknown as Prisma.InputJsonValue,
         },
       })
@@ -330,6 +464,8 @@ export async function POST(req: NextRequest) {
         details: {
           service: "Gmail API",
           sentFrom: senderEmail,
+          htmlProcessed: true,
+          emailFormat: "simple-html"
         },
       })
 
