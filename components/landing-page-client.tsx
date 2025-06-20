@@ -31,6 +31,31 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
   const [mounted, setMounted] = useState(false)
   const router = useRouter()
 
+  // Enhanced data with more compelling messaging
+  const enhancedData = {
+    stats: [
+      {
+        number: "3 sec",
+        label: "From Prompt to Email",
+        icon: "⚡"
+      },
+      {
+        number: "95%",
+        label: "Higher Engagement Rates",
+        icon: "📈"
+      },
+      {
+        number: "1 Click",
+        label: "To Send Emails",
+        icon: "🎯"
+      }
+    ],
+    features: {
+      title: "AI-Powered Email Marketing Revolution",
+                  subtitle: "Describe your email idea and watch AI create stunning templates instantly. Drop in images to make it more compelling. From prompt to professional email—then send with one click."
+    }
+  }
+
   useEffect(() => {
     setMounted(true)
 
@@ -184,20 +209,20 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
             </motion.div>
             <div>
               <h1 className="font-bold text-xl tracking-tight">EmailCraft</h1>
-              <p className="text-xs text-muted-foreground">AI Email Designer</p>
+              <p className="text-xs text-muted-foreground">AI Email Automation</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" asChild>
-              <Link href="https://github.com" target="_blank">
+              <Link href="https://github.com/kadacheahmedrami" target="_blank">
                 <Github className="h-4 w-4 mr-2" />
                 GitHub
               </Link>
             </Button>
             <ThemeToggle />
             <Button variant="outline" size="sm" onClick={Start}>
-              Get Started
+              Start Building
             </Button>
           </div>
         </motion.nav>
@@ -212,7 +237,7 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
                 className="px-6 py-3 text-sm font-medium bg-primary/10 text-primary border-primary/20 shadow-lg backdrop-blur-sm"
               >
                 <Sparkles className="h-4 w-4 mr-2" />
-                Powered by Advanced AI
+                Prompt → Create → Send
               </Badge>
             </motion.div>
 
@@ -220,7 +245,7 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
             <motion.div className="mb-12 space-y-6" variants={itemVariants}>
               <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight">
                 <span className="bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
-                  Create Stunning
+                Create Stunning
                 </span>
                 <br />
                 <span className="bg-gradient-to-r from-primary via-blue-500 to-purple-500 bg-clip-text text-transparent">
@@ -228,7 +253,7 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
                 </span>
               </h1>
               <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-                {data.features.subtitle}
+                {enhancedData.features.subtitle}
               </p>
             </motion.div>
 
@@ -240,7 +265,7 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
                   onClick={Start}
                   className="h-14 px-10 text-lg font-medium shadow-xl bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90"
                 >
-                  Start Creating
+                  Start Prompting
                   <ArrowRight className="h-5 w-5 ml-2" />
                 </Button>
               </motion.div>
@@ -251,14 +276,14 @@ export function LandingPageClient({ data }: LandingPageClientProps) {
                   className="h-14 px-10 text-lg border-2 hover:shadow-lg backdrop-blur-sm"
                   asChild
                 >
-                  <Link href="#features">Learn More</Link>
+                  <Link href="#features">See How It Works</Link>
                 </Button>
               </motion.div>
             </motion.div>
 
             {/* Enhanced Stats */}
             <motion.div className="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-16" variants={containerVariants}>
-              {data.stats.map((stat, index) => (
+              {enhancedData.stats.map((stat, index) => (
                 <motion.div
                   key={index}
                   className="text-center p-6 rounded-2xl bg-card/50 backdrop-blur border border-border/50 hover:border-primary/30 transition-all duration-300 hover:shadow-lg"
