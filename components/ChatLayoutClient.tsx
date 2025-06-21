@@ -51,7 +51,6 @@ export function ChatLayoutClient({ children, session }: ChatLayoutClientProps) {
             onImagesChange={setUploadedImages}
             isOpen={sidebarOpen}
             onToggle={() => setSidebarOpen(!sidebarOpen)}
-            currentChatId="" // This will be overridden by individual pages
           />
 
           {/* Main Content */}

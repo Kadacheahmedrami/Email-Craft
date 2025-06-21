@@ -50,8 +50,8 @@ const testGmailAccess = async (accessToken: string) => {
 // Convert HTML to plain text
 const htmlToPlainText = (html: string): string => {
   return html
-    .replace(/<style[^>]*>.*?<\/style>/gis, '')
-    .replace(/<script[^>]*>.*?<\/script>/gis, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/div>/gi, '\n')
