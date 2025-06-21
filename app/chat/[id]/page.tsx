@@ -245,7 +245,7 @@ export default function ChatPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center bg-background text-foreground justify-center h-screen text-xl">
+      <div className="flex items-center bg-background text-foreground  justify-center w-full h-screen text-xl">
         Loading chat...
       </div>
     )

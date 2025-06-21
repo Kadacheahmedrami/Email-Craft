@@ -201,7 +201,7 @@ function SendEmailClient({ chatId }: SendEmailClientProps) {
   if (state.isLoading) {
     return (
       <ThemeProvider>
-        <div className="h-screen bg-background flex items-center justify-center">
+        <div className="h-screen bg-background flex items-center w-full justify-center">
           <div className="text-center space-y-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
             <div>
@@ -216,7 +216,7 @@ function SendEmailClient({ chatId }: SendEmailClientProps) {
 
   return (
     <ThemeProvider>
-      <div className="h-screen bg-background flex flex-col">
+      <div className="h-screen bg-background flex w-full flex-col">
         {/* Header */}
         <header className="border-b bg-background/95 backdrop-blur">
           <div className="h-16 px-6 flex items-center justify-between">
