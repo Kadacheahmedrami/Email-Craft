@@ -29,7 +29,7 @@ import {
 import { useTheme } from "next-themes"
 import { useDropzone } from "react-dropzone"
 import { cn } from "@/lib/utils"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { Session } from "next-auth"
 import { signOut } from "next-auth/react"
@@ -66,7 +66,6 @@ interface SidebarProps {
   onImagesChange: (images: any[]) => void
   isOpen: boolean
   onToggle: () => void
-  currentChatId: string
 }
 
 export function Sidebar({ 
@@ -76,12 +75,25 @@ export function Sidebar({
   images: propsImages,
   onImagesChange,
   isOpen, 
-  onToggle, 
-  currentChatId 
+  onToggle
 }: SidebarProps) {
 
   const { theme, setTheme } = useTheme()
   const router = useRouter()
+  const pathname = usePathname()
+  
+  // Extract chat ID from pathname
+  const getCurrentChatId = (): string | null => {
+    const pathSegments = pathname.split('/')
+    // Check if we're on a chat route with an ID: /chat/[id]
+    if (pathSegments.length >= 3 && pathSegments[1] === 'chat' && pathSegments[2]) {
+      return pathSegments[2]
+    }
+    return null
+  }
+
+  const currentChatId = getCurrentChatId()
+  
   const [activeView, setActiveView] = useState<"conversations" | "images">("conversations")
   const [searchQuery, setSearchQuery] = useState("")
   const [isUploading, setIsUploading] = useState(false)
@@ -101,6 +113,13 @@ export function Sidebar({
       loadImages()
     }
   }, [activeView, currentChatId])
+
+  // Clear images when no chat is selected
+  useEffect(() => {
+    if (!currentChatId) {
+      setUploadedImages([])
+    }
+  }, [currentChatId])
 
   const loadChats = async () => {
     try {
@@ -416,68 +435,89 @@ export function Sidebar({
               {activeView === "conversations" ? (
                 <div className="h-full flex flex-col">
                   {/* Conversations List */}
-                  <ScrollArea className="flex-1 px-4">
-                    {isLoadingChats ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : filteredConversations.length === 0 ? (
-                      <div className="text-center  py-8">
-                        <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <History className="h-8 w-8 text-muted-foreground/50" />
-                        </div>
-                        <p className="text-sm font-medium mb-1">
-                          {searchQuery ? "No matching conversations" : "No conversations yet"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {searchQuery ? "Try a different search term" : "Create your first email template"}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2 pb-4">
-                        {filteredConversations.map((conv) => (
-                          <Link key={conv.id} href={`/chat/${conv.id}`}>
-                            <div
-                              className={cn(
-                                "group p-3 rounded-lg border w-full border-border/40 bg-card/50 hover:bg-card hover:border-border/60 cursor-pointer transition-all duration-200",
-                                currentChatId === conv.id && "bg-primary/10 border-primary/30",
-                              )}
-                            >
-                              <div className="flex items-start justify-between mb-2">
-                                <h3 className="font-medium text-sm truncate flex-1 pr-2">{conv.title}</h3>
-                                <div className="flex items-center gap-1">
-                                  <Badge variant="outline" className="text-xs px-2 py-0">
-                                    {getConversationType(conv)}
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={(e) => e.preventDefault()}
-                                  >
-                                    <MoreHorizontal className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </div>
-                              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                                {getConversationPreview(conv)}
-                              </p>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Clock className="h-3 w-3" />
-                                  {formatTimeAgo(conv.updatedAt)}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  {conv.messageCount > 0 && <span>{conv.messageCount} msgs</span>}
-                                  {conv.imageCount > 0 && <span>{conv.imageCount} imgs</span>}
-                                </div>
-                              </div>
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
+                  <ScrollArea className="flex-1 px-4 overflow-hidden w-full">
+  {isLoadingChats ? (
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  ) : filteredConversations.length === 0 ? (
+    <div className="text-center py-8 px-2">
+      <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-4">
+        <History className="h-8 w-8 text-muted-foreground/50" />
+      </div>
+      <p className="text-sm font-medium mb-1 break-words">
+        {searchQuery ? "No matching conversations" : "No conversations yet"}
+      </p>
+      <p className="text-xs text-muted-foreground break-words">
+        {searchQuery ? "Try a different search term" : "Create your first email template"}
+      </p>
+    </div>
+  ) : (
+    <div className="flex flex-col gap-2 pb-4 w-full">
+      {filteredConversations.map((conv) => (
+        <Link key={conv.id} href={`/chat/${conv.id}`} className="block w-full">
+          <div
+            className={cn(
+              "group p-3 rounded-lg border border-border/40 bg-card/50 hover:bg-card hover:border-border/60 cursor-pointer transition-all duration-200 w-full max-w-full overflow-hidden",
+              currentChatId === conv.id && "bg-primary/10 border-primary/30",
+            )}
+          >
+            {/* Header with title and actions */}
+            <div className="flex items-start gap-2 mb-2 w-full min-w-0">
+              <h3 className="font-medium text-sm flex-1 min-w-0 break-words hyphens-auto leading-tight">
+                {conv.title}
+              </h3>
+              <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
+                <Badge variant="outline" className="text-xs px-1.5 py-0.5 whitespace-nowrap text-[10px] leading-none">
+                  {getConversationType(conv)}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                  onClick={(e) => e.preventDefault()}
+                >
+                  <MoreHorizontal className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+            
+            {/* Preview text */}
+            <div className="mb-2 w-full overflow-hidden">
+              <p className="text-xs text-muted-foreground break-words overflow-hidden leading-relaxed">
+                <span className="line-clamp-2 display-block">
+                  {getConversationPreview(conv)}
+                </span>
+              </p>
+            </div>
+            
+            {/* Footer with timestamp and stats */}
+            <div className="flex items-center justify-between w-full min-w-0 gap-2">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground flex-1 min-w-0">
+                <Clock className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate text-[10px]">
+                  {formatTimeAgo(conv.updatedAt)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-shrink-0">
+                {conv.messageCount > 0 && (
+                  <span className="whitespace-nowrap text-[10px]">
+                    {conv.messageCount}m
+                  </span>
+                )}
+                {conv.imageCount > 0 && (
+                  <span className="whitespace-nowrap text-[10px]">
+                    {conv.imageCount}i
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </Link>
+      ))}
+    </div>
+  )}
+</ScrollArea>
                 </div>
               ) : (
                 <div className="h-full flex flex-col">
