@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
-import { Sidebar } from "@/components/sidebar"
+
 import { ChatInterface } from "@/components/chat-interface"
 import { PreviewPanel } from "@/components/preview-panel"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -256,25 +256,7 @@ export default function ChatPage() {
   }
 
   return (
-    <ThemeProvider>
-      <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar
-          conversation={conversation}
-          onNewChat={() => {
-            setConversation([])
-            setCurrentTemplate("")
-          } }
-          images={uploadedImages}
-          onImagesChange={setUploadedImages}
-          isOpen={sidebarOpen}
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
-          currentChatId={chatId} session={{
-            user: {
-              name: undefined,
-              email: undefined
-            }
-          }}        />
+   <>
 
         {/* Chat Interface */}
         <div className="flex-1 flex min-w-0 overflow-hidden">
@@ -317,7 +299,6 @@ export default function ChatPage() {
             </Button>
           </div>
         )}
-      </div>
-    </ThemeProvider>
+  </>
   )
 }

@@ -3,13 +3,12 @@
 import type React from "react"
 
 import { useState, useRef } from "react"
-import { ThemeProvider } from "@/components/theme-provider"
+
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Sparkles, Send, Loader2, ImageIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Sidebar } from "@/components/sidebar"
 
 // File: components/NewChatClient.tsx (Client Component)
 
@@ -22,7 +21,7 @@ export function NewChatClient({
   const router = useRouter()
   const [input, setInput] = useState("")
   const [isCreating, setIsCreating] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+ 
   const [uploadedImages, setUploadedImages] = useState<any[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -74,21 +73,8 @@ export function NewChatClient({
   }
 
   return (
-    <ThemeProvider>
-      <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar
-          session={session}
-          conversation={[]}
-          onNewChat={() => {
-            setInput("")
-          }}
-          images={uploadedImages}
-          onImagesChange={setUploadedImages}
-          isOpen={sidebarOpen}
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
-          currentChatId=""
-        />
+ 
+      <>
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-4xl mx-auto">
@@ -177,7 +163,7 @@ export function NewChatClient({
             </Button>
           </div>
         </div>
-      </div>
-    </ThemeProvider>
+        </>     
+
   )
 }

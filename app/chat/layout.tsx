@@ -1,10 +1,13 @@
-// File: page.tsx (Server Component)
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import { NewChatClient } from "@/components/NewChatClient"
+import { ChatLayoutClient } from "@/components/ChatLayoutClient"
 
-export default async function NewChatPage() {
+export default async function ChatLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   // Server-side authentication check
   const session = await getServerSession(authOptions)
   
@@ -13,6 +16,9 @@ export default async function NewChatPage() {
     redirect(`/auth/signin?callbackUrl=${encodeURIComponent("/chat")}`)
   }
 
-  // If authenticated, render the client-side chat component
-  return <NewChatClient session={session} />
+  return (
+    <ChatLayoutClient session={session}>
+      {children}
+    </ChatLayoutClient>
+  )
 }
